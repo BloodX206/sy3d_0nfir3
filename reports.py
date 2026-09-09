@@ -6,7 +6,7 @@ import sys
 import re
 from getpass import getpass
 
-# Optional: colorful output (works on most terminals)
+# ---------- Optional dependencies with fallback ----------
 try:
     from colorama import init, Fore, Style
     init(autoreset=True)
@@ -18,7 +18,6 @@ try:
 except ImportError:
     R = G = B = Y = RESET = ""
 
-# Try to import pyfiglet for banner, fallback to plain text
 try:
     import pyfiglet
     banner = pyfiglet.figlet_format("Reports")
@@ -29,36 +28,67 @@ print(B + banner + RESET)
 print('''
 [Send automatic reports to Instagram]
 
-Coded By : SYED-MEER (upgraded)
+Coded By : SYED-MEER (hardened)
 ________________________________________
 ''')
 
+
 def login(username, password):
-    """Log in to Instagram and return a requests session with valid cookies."""
+    """
+    Log in to Instagram and return a session with valid cookies and CSRF token.
+    """
     session = requests.Session()
-    
-    # 1. Get initial CSRF token from the login page
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+        "Cache-Control": "max-age=0",
+    })
+
+    # 1. Get CSRF token from the login page
     login_url = "https://www.instagram.com/accounts/login/"
     try:
         resp = session.get(login_url)
-        csrf_token = re.search('"csrf_token":"([^"]+)"', resp.text)
-        if csrf_token:
-            csrf_token = csrf_token.group(1)
+        resp.raise_for_status()
+        html = resp.text
+        # Try meta tag first
+        csrf_match = re.search(r'<meta name="csrf-token" content="([^"]+)"', html)
+        if csrf_match:
+            csrf_token = csrf_match.group(1)
         else:
-            print(R + "[!] Could not extract CSRF token. The page structure may have changed." + RESET)
-            return None
+            # Fallback: search in the JSON embedded in scripts
+            csrf_match = re.search(r'"csrf_token":"([^"]+)"', html)
+            if csrf_match:
+                csrf_token = csrf_match.group(1)
+            else:
+                print(R + "[!] CSRF token not found. Instagram may have updated their page." + RESET)
+                return None
     except Exception as e:
         print(R + f"[!] Failed to fetch login page: {e}" + RESET)
         return None
 
     # 2. Prepare login payload
     headers = {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Mobile Safari/537.36",
+        "User-Agent": session.headers["User-Agent"],
         "X-CSRFToken": csrf_token,
         "X-Requested-With": "XMLHttpRequest",
-        "Referer": "https://www.instagram.com/accounts/login/",
+        "Referer": login_url,
         "Content-Type": "application/x-www-form-urlencoded",
         "Origin": "https://www.instagram.com",
+        "Accept": "*/*",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
     }
     data = {
         "username": username,
@@ -67,24 +97,25 @@ def login(username, password):
         "optIntoOneTap": "false",
     }
 
-    # 3. Perform login
     ajax_url = "https://www.instagram.com/accounts/login/ajax/"
     try:
         resp = session.post(ajax_url, headers=headers, data=data)
+        resp.raise_for_status()
     except Exception as e:
         print(R + f"[!] Login request failed: {e}" + RESET)
-        return None
-
-    # 4. Check response
-    if resp.status_code != 200:
-        print(R + f"[!] Login returned status {resp.status_code}" + RESET)
         return None
 
     resp_json = resp.json()
     if resp_json.get("authenticated") and resp_json.get("userId"):
         print(G + "Login Successful ✓" + RESET)
-        # Update session headers with new CSRF token from cookies
-        session.headers.update({"X-CSRFToken": session.cookies.get("csrftoken")})
+        # Update CSRF token from cookies (important for subsequent requests)
+        new_csrf = session.cookies.get("csrftoken")
+        if new_csrf:
+            session.headers.update({"X-CSRFToken": new_csrf})
+        else:
+            print(Y + "[!] Warning: No csrftoken cookie found. Might cause issues later." + RESET)
+        # Add required app ID header
+        session.headers.update({"X-IG-App-ID": "936619743392459"})
         return session
     elif "checkpoint_required" in resp.text:
         print(R + "[!] Checkpoint required. Please verify your account via browser first." + RESET)
@@ -95,59 +126,81 @@ def login(username, password):
 
 
 def get_user_id(session, username):
-    """Retrieve the numeric user ID for a given Instagram username."""
-    url = f"https://www.instagram.com/{username}/?__a=1"
+    """
+    Retrieve the numeric user ID using the authenticated GraphQL endpoint.
+    """
+    url = "https://www.instagram.com/api/v1/users/web_profile_info/"
+    params = {"username": username}
     try:
-        resp = session.get(url)
+        resp = session.get(url, params=params)
+        resp.raise_for_status()
         data = resp.json()
-        user_id = data["graphql"]["user"]["id"]
+        user_id = data["data"]["user"]["id"]
         return user_id
+    except requests.exceptions.HTTPError as e:
+        if resp.status_code == 404:
+            print(R + f"[!] Username '{username}' not found." + RESET)
+        else:
+            print(R + f"[!] HTTP error: {e}" + RESET)
+    except KeyError:
+        print(R + "[!] Unexpected JSON response when fetching user ID." + RESET)
+        print(Y + f"Response: {resp.text[:200]}..." + RESET)
     except Exception as e:
         print(R + f"[!] Could not fetch user ID: {e}" + RESET)
-        return None
+    return None
 
 
 def send_report(session, user_id, reason_id, count, delay):
     """
-    Send multiple reports for a given reason.
-    Returns (sent, errors) tuple.
+    Send multiple reports using the current API endpoint.
     """
     sent = 0
     errors = 0
-    url = f"https://www.instagram.com/users/{user_id}/report/"
+    # Updated endpoint (found in Instagram's web network tab)
+    url = f"https://www.instagram.com/api/v1/users/{user_id}/report/"
     data = {"source_name": "", "reason_id": str(reason_id), "frx_context": ""}
+    # Ensure we have a valid CSRF token in headers
+    csrf = session.cookies.get("csrftoken")
+    if csrf:
+        session.headers.update({"X-CSRFToken": csrf})
+    else:
+        print(R + "[!] No CSRF token available – reports may fail." + RESET)
 
     for i in range(count):
         try:
             resp = session.post(url, data=data)
-            if resp.status_code == 200 and '"status":"ok"' in resp.text:
-                sent += 1
+            if resp.status_code == 200:
+                resp_json = resp.json()
+                if resp_json.get("status") == "ok":
+                    sent += 1
+                else:
+                    errors += 1
+                    # Debug output (comment out to hide)
+                    # print(R + f"[!] Report error: {resp.text}" + RESET)
             else:
                 errors += 1
-                # Optionally print error details (debug)
-                # print(R + f"[!] Report error: {resp.text}" + RESET)
         except Exception as e:
             errors += 1
             print(R + f"[!] Request exception: {e}" + RESET)
 
-        # Progress update on the same line
+        # Progress indicator
         print(G + f"\rSent = {sent}  " + R + f"Errors = {errors}" + RESET, end="")
         time.sleep(delay)
 
-    print()  # newline after progress
+    print()  # new line after progress
     return sent, errors
 
 
 def main():
-    # Get credentials with defaults
+    # Credentials with defaults (press Enter to use)
     default_user = "shazy8690"
     default_pass = "muhibahmed206"
     user_input = input(f"Username [{default_user}]: ").strip()
     username = user_input if user_input else default_user
-    pass_input = getpass(f"Password [{default_pass}]: ").strip()  # hidden input
+    pass_input = getpass(f"Password [{default_pass}]: ").strip()
     password = pass_input if pass_input else default_pass
 
-    target = input("Target Id (Jatoii_shb): ").strip()
+    target = input("Target Id (e.g., Jatoii_shb): ").strip()
     if not target:
         print(R + "[!] Target username cannot be empty." + RESET)
         sys.exit(1)
@@ -157,7 +210,7 @@ def main():
     if not session:
         sys.exit(1)
 
-    # Get target user ID
+    # Get target ID
     user_id = get_user_id(session, target)
     if not user_id:
         sys.exit(1)
@@ -165,7 +218,7 @@ def main():
     print(G + f"Target: {target} (ID: {user_id})" + RESET)
     print(G + "*" * 25 + RESET)
 
-    # Report reasons (mapped from the original list)
+    # Report reasons
     reasons = {
         1: "Spam",
         2: "Violence",
@@ -191,7 +244,7 @@ def main():
 
     try:
         count = int(input(Y + "How many reports: " + RESET))
-        delay = int(input(Y + "Time wait between reports (seconds): " + RESET))
+        delay = float(input(Y + "Time wait between reports (seconds): " + RESET))
     except ValueError:
         print(R + "[!] Please enter valid numbers." + RESET)
         sys.exit(1)
@@ -205,94 +258,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()    		print(G+f"\rSent = {nu}  {R}Error ={n}",end="")
-    		time.sleep(tu)
-    		
-    elif xx == 2:
-    	P2 = int(input(Y+"How many reports :"))
-    	tu = int(input("time wait (sec ):"))
-    	print('-'*30)
-    	for i_2 in range(P2):
-    		url_2=f'https://www.instagram.com/users/{id}/report/'
-    		data_2={'source_name':'','reason_id':'5','frx_context':''}
-    		report_2=rs.post(url_2,data=data_2)
-    		if '"status":"ok"' in report_2.text:
-    			nu += 1
-    		else:
-    			n += 1
-    		print(G+f"\rSent = {nu}  {R}Error ={n}",end="")
-    		time.sleep(tu)
-    elif xx == 3:
-    	P3 = int(input(Y+"How many reports :"))
-    	tu = int(input("time wait :"))
-    	print('-'*30)
-    	for i_3 in range(P3):
-    		url_3=f'https://www.instagram.com/users/{id}/report/'
-    		data_3={'source_name':'','reason_id':'8','frx_context':''}
-    		report_3=rs.post(url_3,data=data_3)
-    		if '"status":"ok"' in report_3.text:
-    			nu += 1
-    		else:
-    			n += 1
-    		print(G+f"\rSent = {nu}  {R}Error ={n}",end="")
-    		time.sleep(tu)
-    elif xx == 4:
-    	P4 = int(input(Y+"How many reports :"))
-    	tu = int(input("time wait :"))
-    	print('-'*30)
-    	for i_4 in range(P4):
-    		url_4=f'https://www.instagram.com/users/{id}/report/'
-    		data_4={'source_name':'','reason_id':'4','frx_context':''}
-    		report_4=rs.post(url_4,data=data_4)
-    		if '"status":"ok"' in report_4.text:
-    			nu += 1
-    		else:
-    			n += 1
-    		print(G+f"\rSent = {nu}  {R}Error ={n}",end="")
-    		time.sleep(tu)	
-    elif xx == 5:
-    	P5 = int(input(Y+"How many reports :"))
-    	tu = int(input("time wait :"))
-    	print('-'*30)
-    	for i_5 in range(P5):
-    		url_5=f'https://www.instagram.com/users/{id}/report/'
-    		data_5={'source_name':'','reason_id':'7','frx_context':''}
-    		report_5=rs.post(url_5,data=data_5)
-    		if '"status":"ok"' in report_5.text:
-    			nu += 1
-    		else:
-    			n += 1
-    		print(G+f"\rSent = {nu}  {R}Error ={n}",end="")
-    		time.sleep(tu)    		
-    elif xx == 6:
-    	P6 = int(input(Y+"How many reports :"))
-    	tu = int(input("time wait :"))
-    	print('-'*30)
-    	for i_6 in range(P6):
-    		url_6=f'https://www.instagram.com/users/{id}/report/'
-    		data_6={'source_name':'','reason_id':'2','frx_context':''}
-    		report_6=rs.post(url_6,data=data_6)
-    		if '"status":"ok"' in report_6.text:
-    			nu += 1
-    		else:
-    			n += 1
-    		print(G+f"\rSent = {nu}  {R}Error ={n}",end="")
-    		time.sleep(tu)
-    elif xx == 7:
-    	P7 = int(input(Y+"How many reports :"))
-    	tu = int(input("time wait :"))
-    	print('-'*30)
-    	for i_7 in range(P7):
-    		url_7=f'https://www.instagram.com/users/{id}/report/'
-    		data_7={'source_name':'','reason_id':'6','frx_context':''}
-    		report_7=rs.post(url_7,data=data_7)
-    		if '"status":"ok"' in report_7.text:
-    			nu += 1
-    		else:
-    			n += 1
-    		print(G+f"\rSent = {nu}  {R}Error ={n}",end="")
-    		time.sleep(tu)		
-elif ('{"message":"checkpoint_required"') in r.text:
-	print(R+"[!]checkpoint")
-else:
-	print(R+"Error, Try again")
+    main()
