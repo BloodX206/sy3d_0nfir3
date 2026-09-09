@@ -1,112 +1,211 @@
+#!/usr/bin/env python3
 import requests
-import os
 import json
-import pyfiglet,time
-try :
-  import pyfiglet
-except ImportError:
-  os.system ("pip install pyfiglet")
-  
-try :
-  
-  import requests
+import time
+import sys
+import re
+from getpass import getpass
 
+# Optional: colorful output (works on most terminals)
+try:
+    from colorama import init, Fore, Style
+    init(autoreset=True)
+    R = Fore.RED
+    G = Fore.GREEN
+    B = Fore.BLUE
+    Y = Fore.YELLOW
+    RESET = Style.RESET_ALL
 except ImportError:
-  
-  os.system ("pip install requests")
-os.system ("clear")
-rs = requests.session()
-R = "\033[1;31m"
-G = "\033[1;32m"
-B = "\033[0;94m"
-Y = "\033[1;33m"
-nu = 0
-n = 0
-br = pyfiglet.figlet_format("Reports")
-print(B+br)
+    R = G = B = Y = RESET = ""
+
+# Try to import pyfiglet for banner, fallback to plain text
+try:
+    import pyfiglet
+    banner = pyfiglet.figlet_format("Reports")
+except ImportError:
+    banner = "=== Reports ==="
+
+print(B + banner + RESET)
 print('''
 [Send automatic reports to Instagram]
 
-Coded By : SYED-MEER
+Coded By : SYED-MEER (upgraded)
 ________________________________________
 ''')
-print(Y+"Log in to your Instagram account:")
-print("")     
-username = input("shazy8690 :")
-password = input("muhibahmed206 :")
-Target = input("Target Id (Jatoii_shb) :")
-url = 'https://www.instagram.com/accounts/login/ajax/'
-headers = {
-     'accept': '*/*',
-    'accept-encoding': 'gzip, deflate, br',
-    'accept-language': 'ar,en-US;q=0.9,en;q=0.8',
-    'content-length': '275',
-    'content-type': 'application/x-www-form-urlencoded',
-    'cookie': 'csrftoken=DqBQgbH1p7xEAaettRA0nmApvVJTi1mR; ig_did=C3F0FA00-E82D-41C4-99E9-19345C41EEF2; mid=X8DW0gALAAEmlgpqxmIc4sSTEXE3; ig_nrcb=1',
-    'origin': 'https://www.instagram.com',
-    'referer': 'https://www.instagram.com/',
-    'sec-fetch-dest': 'empty',
-    'sec-fetch-mode': 'cors',
-    'sec-fetch-site': 'same-origin',
-    'user-agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Mobile Safari/537.36',
-    'x-csrftoken': 'DqBQgbH1p7xEAaettRA0nmApvVJTi1mR',
-    'x-ig-app-id': '936619743392459',
-    'x-ig-www-claim': '0',
-    'x-instagram-ajax': 'bc3d5af829ea',
-    'x-requested-with': 'XMLHttpRequest'
-    }
-data = {
-         'username': f'{username}',
-         'enc_password': f'#PWD_INSTAGRAM_BROWSER:0:1589682409:{password}',
-         'queryParams': '{}',
-         'optIntoOneTap': 'false'
-    }    
-r = rs.post(url, headers=headers, data=data)
-if  'authenticated":true' in r.text or 'userId' in r.text:
-    rs.headers.update({'X-CSRFToken': r.cookies['csrftoken']})
-    print("")
-    print ("\033[92m Login Successful ✓")
-    print ("")
-    os.system ("xdg-open https://www.facebook.com/The'w Shah MIR/")
-    print(G+"*"*25)	
-    print("")
-    print(G+"Login :"+username)
-    try:
-        u = rs.get(f"https://www.instagram.com/{Target}/?__a=1")
-        id =  str(u.json()["graphql"]["user"]["id"])
-        print(G+"Target : "+f"{Target} : {id}")
-        print("")
-        print(G+"*"*25)
-    except:
-    	print(R+"[!]Check the victim's account")
-    	exit()
-    print(R+"""
-Choose the type of report :	
-[1] - spam
-[2] - violence
-[3] - Impersonation
-[4] - Sexual activity
-[5] - harassment
-[6] - Self-harm
-[7] - Hate on
 
-    """)
-    xx = int(input("Enter the report number :"))
-    print('_'*30)
-    print("")
-    if xx == 1:
-    	P1= int(input(Y+"How many reports :"))
-    	tu = int(input("time wait :"))
-    	print('-'*30)
-    	for i_1 in range(P1):
-    		url_1=f'https://www.instagram.com/users/{id}/report/'
-    		data_1={'source_name':'','reason_id':'1','frx_context':''}
-    		report_1=rs.post(url_1,data=data_1)
-    		if '"status":"ok"' in report_1.text:
-    			nu += 1
-    		else:
-    			n += 1
-    		print(G+f"\rSent = {nu}  {R}Error ={n}",end="")
+def login(username, password):
+    """Log in to Instagram and return a requests session with valid cookies."""
+    session = requests.Session()
+    
+    # 1. Get initial CSRF token from the login page
+    login_url = "https://www.instagram.com/accounts/login/"
+    try:
+        resp = session.get(login_url)
+        csrf_token = re.search('"csrf_token":"([^"]+)"', resp.text)
+        if csrf_token:
+            csrf_token = csrf_token.group(1)
+        else:
+            print(R + "[!] Could not extract CSRF token. The page structure may have changed." + RESET)
+            return None
+    except Exception as e:
+        print(R + f"[!] Failed to fetch login page: {e}" + RESET)
+        return None
+
+    # 2. Prepare login payload
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Mobile Safari/537.36",
+        "X-CSRFToken": csrf_token,
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer": "https://www.instagram.com/accounts/login/",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Origin": "https://www.instagram.com",
+    }
+    data = {
+        "username": username,
+        "enc_password": f"#PWD_INSTAGRAM_BROWSER:0:1589682409:{password}",
+        "queryParams": "{}",
+        "optIntoOneTap": "false",
+    }
+
+    # 3. Perform login
+    ajax_url = "https://www.instagram.com/accounts/login/ajax/"
+    try:
+        resp = session.post(ajax_url, headers=headers, data=data)
+    except Exception as e:
+        print(R + f"[!] Login request failed: {e}" + RESET)
+        return None
+
+    # 4. Check response
+    if resp.status_code != 200:
+        print(R + f"[!] Login returned status {resp.status_code}" + RESET)
+        return None
+
+    resp_json = resp.json()
+    if resp_json.get("authenticated") and resp_json.get("userId"):
+        print(G + "Login Successful ✓" + RESET)
+        # Update session headers with new CSRF token from cookies
+        session.headers.update({"X-CSRFToken": session.cookies.get("csrftoken")})
+        return session
+    elif "checkpoint_required" in resp.text:
+        print(R + "[!] Checkpoint required. Please verify your account via browser first." + RESET)
+        return None
+    else:
+        print(R + f"[!] Login failed: {resp.text}" + RESET)
+        return None
+
+
+def get_user_id(session, username):
+    """Retrieve the numeric user ID for a given Instagram username."""
+    url = f"https://www.instagram.com/{username}/?__a=1"
+    try:
+        resp = session.get(url)
+        data = resp.json()
+        user_id = data["graphql"]["user"]["id"]
+        return user_id
+    except Exception as e:
+        print(R + f"[!] Could not fetch user ID: {e}" + RESET)
+        return None
+
+
+def send_report(session, user_id, reason_id, count, delay):
+    """
+    Send multiple reports for a given reason.
+    Returns (sent, errors) tuple.
+    """
+    sent = 0
+    errors = 0
+    url = f"https://www.instagram.com/users/{user_id}/report/"
+    data = {"source_name": "", "reason_id": str(reason_id), "frx_context": ""}
+
+    for i in range(count):
+        try:
+            resp = session.post(url, data=data)
+            if resp.status_code == 200 and '"status":"ok"' in resp.text:
+                sent += 1
+            else:
+                errors += 1
+                # Optionally print error details (debug)
+                # print(R + f"[!] Report error: {resp.text}" + RESET)
+        except Exception as e:
+            errors += 1
+            print(R + f"[!] Request exception: {e}" + RESET)
+
+        # Progress update on the same line
+        print(G + f"\rSent = {sent}  " + R + f"Errors = {errors}" + RESET, end="")
+        time.sleep(delay)
+
+    print()  # newline after progress
+    return sent, errors
+
+
+def main():
+    # Get credentials with defaults
+    default_user = "shazy8690"
+    default_pass = "muhibahmed206"
+    user_input = input(f"Username [{default_user}]: ").strip()
+    username = user_input if user_input else default_user
+    pass_input = getpass(f"Password [{default_pass}]: ").strip()  # hidden input
+    password = pass_input if pass_input else default_pass
+
+    target = input("Target Id (e.g., Jatoii_shb): ").strip()
+    if not target:
+        print(R + "[!] Target username cannot be empty." + RESET)
+        sys.exit(1)
+
+    # Login
+    session = login(username, password)
+    if not session:
+        sys.exit(1)
+
+    # Get target user ID
+    user_id = get_user_id(session, target)
+    if not user_id:
+        sys.exit(1)
+
+    print(G + f"Target: {target} (ID: {user_id})" + RESET)
+    print(G + "*" * 25 + RESET)
+
+    # Report reasons (mapped from the original list)
+    reasons = {
+        1: "Spam",
+        2: "Violence",
+        3: "Impersonation",
+        4: "Sexual activity",
+        5: "Harassment",
+        6: "Self-harm",
+        7: "Hate speech"
+    }
+    print(R + "Choose the type of report:" + RESET)
+    for key, val in reasons.items():
+        print(f"[{key}] - {val}")
+    print()
+
+    try:
+        choice = int(input("Enter the report number: "))
+        if choice not in reasons:
+            print(R + "[!] Invalid choice." + RESET)
+            sys.exit(1)
+    except ValueError:
+        print(R + "[!] Please enter a number." + RESET)
+        sys.exit(1)
+
+    try:
+        count = int(input(Y + "How many reports: " + RESET))
+        delay = int(input(Y + "Time wait between reports (seconds): " + RESET))
+    except ValueError:
+        print(R + "[!] Please enter valid numbers." + RESET)
+        sys.exit(1)
+
+    print("-" * 30)
+    print(G + f"Sending {count} reports for reason: {reasons[choice]} ..." + RESET)
+
+    sent, errors = send_report(session, user_id, choice, count, delay)
+
+    print(G + f"\nFinished. Sent: {sent}, Errors: {errors}" + RESET)
+
+
+if __name__ == "__main__":
+    main()    		print(G+f"\rSent = {nu}  {R}Error ={n}",end="")
     		time.sleep(tu)
     		
     elif xx == 2:
