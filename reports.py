@@ -147,7 +147,7 @@ def main():
     pass_input = getpass(f"Password [{default_pass}]: ").strip()  # hidden input
     password = pass_input if pass_input else default_pass
 
-    target = input("Target Id (e.g., Jatoii_shb): ").strip()
+    target = input("Target Id (Jatoii_shb): ").strip()
     if not target:
         print(R + "[!] Target username cannot be empty." + RESET)
         sys.exit(1)
