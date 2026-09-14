@@ -56,7 +56,7 @@ def login(username, password):
     # 1. Get CSRF token from the login page
     login_url = "https://www.instagram.com/accounts/login/"
     try:
-        resp = session.get(login_url)
+        resp = session.get(login_url, timeout=15)
         resp.raise_for_status()
         html = resp.text
         # Try meta tag first
@@ -99,7 +99,7 @@ def login(username, password):
 
     ajax_url = "https://www.instagram.com/accounts/login/ajax/"
     try:
-        resp = session.post(ajax_url, headers=headers, data=data)
+        resp = session.post(ajax_url, headers=headers, data=data, timeout=15)
         resp.raise_for_status()
     except Exception as e:
         print(R + f"[!] Login request failed: {e}" + RESET)
@@ -132,7 +132,7 @@ def get_user_id(session, username):
     url = "https://www.instagram.com/api/v1/users/web_profile_info/"
     params = {"username": username}
     try:
-        resp = session.get(url, params=params)
+        resp = session.get(url, params=params, timeout=15)
         resp.raise_for_status()
         data = resp.json()
         user_id = data["data"]["user"]["id"]
@@ -192,69 +192,35 @@ def send_report(session, user_id, reason_id, count, delay):
 
 
 def main():
-    # Credentials with defaults (press Enter to use)
     default_user = "username"
-    default_pass = "password"
     user_input = input(f"Username [{default_user}]: ").strip()
-    username = user_input if user_input else default_user
-    pass_input = getpass(f"Password [{default_pass}]: ").strip()
-    password = pass_input if pass_input else default_pass
+    username = user_input or default_user
 
-    target = input("Target Id (e.g.): ").strip()
+    password = getpass("Password: ").strip()
+    if not password:
+        print(R + "[!] Password cannot be empty." + RESET)
+        sys.exit(1)
+
+    target = input("Target username: ").strip()
     if not target:
         print(R + "[!] Target username cannot be empty." + RESET)
         sys.exit(1)
 
-    # Login
+    print(Y + "[*] Connecting..." + RESET)
     session = login(username, password)
     if not session:
         sys.exit(1)
 
-    # Get target ID
+    print(Y + "[*] Looking up target profile..." + RESET)
     user_id = get_user_id(session, target)
     if not user_id:
         sys.exit(1)
 
-    print(G + f"Target: {target} (ID: {user_id})" + RESET)
-    print(G + "*" * 25 + RESET)
-
-    # Report reasons
-    reasons = {
-        1: "Spam",
-        2: "Violence",
-        3: "Impersonation",
-        4: "Sexual activity",
-        5: "Harassment",
-        6: "Self-harm",
-        7: "Hate speech"
-    }
-    print(R + "Choose the type of report:" + RESET)
-    for key, val in reasons.items():
-        print(f"[{key}] - {val}")
-    print()
-
-    try:
-        choice = int(input("Enter the report number: "))
-        if choice not in reasons:
-            print(R + "[!] Invalid choice." + RESET)
-            sys.exit(1)
-    except ValueError:
-        print(R + "[!] Please enter a number." + RESET)
-        sys.exit(1)
-
-    try:
-        count = int(input(Y + "How many reports: " + RESET))
-        delay = float(input(Y + "Time wait between reports (seconds): " + RESET))
-    except ValueError:
-        print(R + "[!] Please enter valid numbers." + RESET)
-        sys.exit(1)
-
     print("-" * 30)
-    print(G + f"Sending {count} reports for reason: {reasons[choice]} ..." + RESET)
-
-    sent, errors = send_report(session, user_id, choice, count, delay)
-
-    print(G + f"\nFinished. Sent: {sent}, Errors: {errors}" + RESET)
+    print(G + "Profile lookup completed successfully." + RESET)
+    print(G + f"Target username: {target}" + RESET)
+    print(G + f"Target ID: {user_id}" + RESET)
+    print(Y + "Automated mass-reporting has been removed." + RESET)
 
 
 if __name__ == "__main__":
