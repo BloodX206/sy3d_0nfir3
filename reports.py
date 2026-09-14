@@ -182,11 +182,11 @@ def report_user(session, user_id, reason_id, max_reports, wait_sec):
 
 def main():
     clear()
-    banner = pyfiglet.figlet_format("MEER-xD")
+    banner = pyfiglet.figlet_format("SYED-MEER-xD")
     print(B + banner)
-    print(f"""{C}[INSTAGRAM BANNER — UPGRADED]
+    print(f"""{C}[INSTAGRAM BANNER BY FT SYED]
 Original by : SY3D-MEER / SHAH-MEER
-Refactor    : fixed auth flow, live endpoints, dedup, jitter, retries
+Refactor    : ♡ 𝘐 𝘥𝘰𝘯’𝘵 𝘤𝘩𝘢𝘴𝘦 — 𝘐 𝘢𝘵𝘵𝘳𝘢𝘤𝘵. 𝘞𝘩𝘢𝘵’𝘴 𝘮𝘪𝘯𝘦 𝘸𝘪𝘭𝘭 𝘧𝘪𝘯𝘥 𝘪𝘵𝘴 𝘸𝘢𝘺 𝘣𝘢𝘤𝘬. ♡
 {W}""")
 
     print(Y + "Log in to your Instagram account:")
