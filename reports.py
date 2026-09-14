@@ -115,7 +115,7 @@ def login(username, password):
         else:
             print(Y + "[!] Warning: No csrftoken cookie found. Might cause issues later." + RESET)
         # Add required app ID header
-        session.headers.update({"X-IG-App-ID": "936619743392459"})
+        session.headers.update({"X-IG-App-ID": "923118456830"})
         return session
     elif "checkpoint_required" in resp.text:
         print(R + "[!] Checkpoint required. Please verify your account via browser first." + RESET)
@@ -193,14 +193,14 @@ def send_report(session, user_id, reason_id, count, delay):
 
 def main():
     # Credentials with defaults (press Enter to use)
-    default_user = "shazy8690"
-    default_pass = "muhibahmed206"
+    default_user = "username"
+    default_pass = "password"
     user_input = input(f"Username [{default_user}]: ").strip()
     username = user_input if user_input else default_user
     pass_input = getpass(f"Password [{default_pass}]: ").strip()
     password = pass_input if pass_input else default_pass
 
-    target = input("Target Id (e.g., Jatoii_shb): ").strip()
+    target = input("Target Id (e.g.): ").strip()
     if not target:
         print(R + "[!] Target username cannot be empty." + RESET)
         sys.exit(1)
