@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-"""
-Instagram Mass-Report Tool - Upgraded
-Original: SY3D-MEER / SHAH-MEER
-Refactor: working CSRF flow, live endpoints, dedup, retry/backoff,
-          jittered delays, UA rotation, proxy support, cross-platform clear
-"""
-
 import os
 import sys
 import time
